@@ -2,15 +2,15 @@
 
 #### Your name
 
-TODO
+Sara Brophy
 
 #### Your section leader's name
 
-TODO
+Tomoya Kanno
 
 #### Project title
 
-TODO
+Once Upon a Platform
 
 ***
 
@@ -18,12 +18,12 @@ Short answers for the below questions suffice. If you want to alter your plan fo
 
 #### What have you done for your project so far?
 
-TODO
+I have created one level for my platformer game and put placeholder animations where I plan on inserting my own drawings as animations.
 
 #### What have you not done for your project yet?
 
-TODO
+I have not added more levels. 
 
 #### What problems, if any, have you encountered?
 
-TODO
+My biggest issue was getting pip and pygame to install properly, but I solved it by watching many YouTube videos and reading many Reddit threads.
