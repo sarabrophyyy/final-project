@@ -8,6 +8,7 @@ pygame.mixer.init()  # for sounds/music
 
 # basic settings
 WIDTH, HEIGHT = 1000, 600
+LEVEL_WIDTH = 2500
 FPS = 60
 GRAVITY = 0.8
 PLAYER_SPEED = 5
@@ -42,6 +43,17 @@ def load_music(name):
 
 # game window
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
+
+IMG_PLATFORM = load_image("platform.png", (200, 100))
+IMG_GROUND   = load_image("ground.png", (400, 120))
+
+IMG_BACKGROUND = load_image("background.png", (WIDTH, HEIGHT))
+
+IMG_PLAYER_IDLE = load_image("nick_w.png", (200, 200))
+IMG_ENEMY = load_image("enemy.png", (175, 150))
+IMG_COIN = load_image("apple.png", (100, 135))
+IMG_GOAL = load_image("tower.png", (400, 500))
+
 pygame.display.set_caption("Once Upon a Platform")
 clock = pygame.time.Clock()
 
@@ -51,31 +63,30 @@ def get_font(size=24):
 
 # objects in game
 class Platform(pygame.sprite.Sprite):
-    def __init__(self, x, y, w, h):
+    def __init__(self, x, y, w, h, image=None):
         super().__init__()
-        self.image = pygame.Surface((w, h))
-        self.image.fill((60, 150, 60))  # green-ish
+        self.image = pygame.transform.scale(image, (w, h)) if image else pygame.Surface((w, h))
         self.rect = self.image.get_rect(topleft=(x, y))
+
+        # The collision surface for standing on the platform
+        self.floor_rect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 5)
 
 class Coin(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = load_image("coin.png", (24, 24))
-        # fallback: find image for coin
-        if getattr(self.image, "get_alpha", None) and self.image.get_at((0,0))[3] == 255 and self.image.get_size() == (24,24):
-            pass
+        self.image = IMG_COIN
         self.rect = self.image.get_rect(center=(x, y))
 
 class Goal(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        self.image = load_image("flag.png", (48, 64))
+        self.image = IMG_GOAL
         self.rect = self.image.get_rect(midbottom=(x, y))
 
 class Enemy(pygame.sprite.Sprite):
     def __init__(self, x, y, patrol_left, patrol_right, speed=2):
         super().__init__()
-        self.image = load_image("enemy.png", (40, 40))
+        self.image = IMG_ENEMY
         self.rect = self.image.get_rect(midbottom=(x, y))
         self.speed = speed
         self.left_bound = patrol_left
@@ -101,34 +112,38 @@ class Enemy(pygame.sprite.Sprite):
 class Player(pygame.sprite.Sprite):
     def __init__(self, x, y):
         super().__init__()
-        # use drawings for character animation (square to fall back on)
-        self.images_right = [load_image("player_idle.png", (40, 56))]
-        self.images_left = [pygame.transform.flip(img, True, False) for img in self.images_right]
-        # square fallback here
-        if not self.images_right[0]:
-            surf = pygame.Surface((40, 56))
-            surf.fill((120, 180, 255))
-            self.images_right = [surf]
-            self.images_left = [pygame.transform.flip(surf, True, False)]
+
+        # images
+        self.images_right = [IMG_PLAYER_IDLE]
+        self.images_left = [pygame.transform.flip(IMG_PLAYER_IDLE, True, False)]
+        self.facing_right = True
+
+        # active sprite
         self.image = self.images_right[0]
-        self.rect = self.image.get_rect(topleft=(x, y))
+        self.rect = self.image.get_rect(midbottom=(x, y))
+
+        # movement
         self.vx = 0
         self.vy = 0
         self.on_ground = False
-        self.facing_right = True
-        self.anim_timer = 0
-        self.score = 0
+
+        # gameplay
         self.lives = 3
+        self.score = 0
 
     def handle_input(self):
         keys = pygame.key.get_pressed()
         self.vx = 0
+
         if keys[pygame.K_LEFT] or keys[pygame.K_a]:
             self.vx = -PLAYER_SPEED
             self.facing_right = False
+
         if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
             self.vx = PLAYER_SPEED
             self.facing_right = True
+
+        # jump
         if (keys[pygame.K_SPACE] or keys[pygame.K_w] or keys[pygame.K_UP]) and self.on_ground:
             self.vy = PLAYER_JUMP_POWER
             self.on_ground = False
@@ -141,7 +156,8 @@ class Player(pygame.sprite.Sprite):
 
     def update(self, platforms, coins, enemies, goal):
         self.handle_input()
-        # hoirzontal movement
+
+        # horizontal
         self.rect.x += self.vx
         collided = pygame.sprite.spritecollide(self, platforms, False)
         for plat in collided:
@@ -150,57 +166,52 @@ class Player(pygame.sprite.Sprite):
             elif self.vx < 0:
                 self.rect.left = plat.rect.right
 
-        # vertical movement
+
+        # vertical
         self.apply_gravity()
         self.rect.y += self.vy
         self.on_ground = False
-        collided = pygame.sprite.spritecollide(self, platforms, False)
-        for plat in collided:
-            # falling
-            if self.vy > 0:
-                self.rect.bottom = plat.rect.top
-                self.vy = 0
-                self.on_ground = True
-            elif self.vy < 0:
+        for plat in platforms:
+            if self.vy < 0 and self.rect.colliderect(plat.rect):
                 self.rect.top = plat.rect.bottom
                 self.vy = 0
+            if self.vy >= 0 and self.rect.colliderect(plat.floor_rect):
+                self.rect.bottom = plat.floor_rect.top
+                self.vy = 0
+                self.on_ground = True
 
-        # coin collection
+        # coins
         coin_hit = pygame.sprite.spritecollide(self, coins, True)
         if coin_hit:
             self.score += len(coin_hit)
             if coin_snd: coin_snd.play()
 
-        # enemy collisions
+        # enemies
         enemy_hit = pygame.sprite.spritecollide(self, enemies, False)
         for e in enemy_hit:
-            # player jumps and hits enemy from above -> stomp
+            # stomp
             if self.vy > 0 and (self.rect.bottom - e.rect.top) < 15:
-                # kill enemy
-                try:
-                    enemies.remove(e)
-                except Exception:
-                    pass
-                self.vy = PLAYER_JUMP_POWER / 2  # bounce a little bit
+                enemies.remove(e)
+                self.vy = PLAYER_JUMP_POWER / 2
                 if stomp_snd: stomp_snd.play()
                 self.score += 1
             else:
-                # hit by enemy -> lose life and respawn
                 if hit_snd: hit_snd.play()
                 self.lives -= 1
                 return "HIT_ENEMY"
 
-        # check the goal
+        # goal
         if pygame.sprite.collide_rect(self, goal):
             if win_snd: win_snd.play()
             return "WIN"
 
         return None
-
+    
     def draw(self, surf, offset_x):
-        # simple draw with facing flip
         img = self.images_right[0] if self.facing_right else self.images_left[0]
-        surf.blit(img, (self.rect.x + offset_x, self.rect.y))
+        surf.blit(img, (self.rect.x - offset_x, self.rect.y))
+
+
 
 # layout/optics of the level
 def build_level():
@@ -208,10 +219,23 @@ def build_level():
     coins = pygame.sprite.Group()
     enemies = pygame.sprite.Group()
 
-    # ground
-    platforms.add(Platform(0, HEIGHT - 40, 2500, 40))
+    # Desired final level width (how far player can go)
+    # You can increase this if you plan larger levels.
+    LEVEL_WIDTH = 2500
 
-    # some platforms (x, y, w, h)
+    # TILE the ground across the full LEVEL_WIDTH
+    ground_tile = IMG_GROUND
+    tile_w, tile_h = ground_tile.get_size()
+    ground_y = HEIGHT - tile_h
+
+    x = 0
+    while x < LEVEL_WIDTH:
+        # create a platform-sized sprite out of the ground tile
+        # use Platform class but with tile size to avoid massive stretching
+        platforms.add(Platform(x, ground_y, tile_w, tile_h))
+        x += tile_w
+
+    # some floating platforms (x, y, w, h)  -- these will be tiled inside Platform
     platform_data = [
         (300, 460, 120, 20),
         (500, 380, 120, 20),
@@ -239,10 +263,18 @@ def build_level():
     enemies.add(Enemy(1600, 460, 1450, 1750))
     enemies.add(Enemy(1800, 420, 1750, 2000))
 
-    # goal at the end
-    goal = Goal(2200, HEIGHT - 40)
+    # goal at the end (place near LEVEL_WIDTH)
+    goal_x = LEVEL_WIDTH - 300
+    goal = Goal(goal_x, HEIGHT - 120)   # Adjusted for your ground tile height
 
-    return platforms, coins, enemies, goal
+    # compute real level_width from content so camera clamps are correct
+    max_right = goal.rect.right
+    for plat in platforms:
+        if plat.rect.right > max_right:
+            max_right = plat.rect.right
+    level_width = max(LEVEL_WIDTH, max_right)
+
+    return platforms, coins, enemies, goal, level_width
 
 # ---------- Load sounds / music ----------
 jump_snd = load_sound("jump.wav")
@@ -319,15 +351,8 @@ def win_screen(score):
 
 # MAIN GAME LOOP
 def run_game():
-    platforms, coins, enemies, goal = build_level()
+    platforms, coins, enemies, goal, level_width = build_level()
     player = Player(120, HEIGHT - 200)
-
-    all_sprites = pygame.sprite.Group()
-    all_sprites.add(platforms)
-    all_sprites.add(coins)
-    all_sprites.add(enemies)
-    all_sprites.add(goal)
-    all_sprites.add(player)
 
     camera_x = 0
 
@@ -338,10 +363,10 @@ def run_game():
             if event.type == pygame.QUIT:
                 pygame.quit(); sys.exit()
 
-        # update enemies
+        # update world (in world coordinates)
         enemies.update(platforms)
-
         result = player.update(platforms, coins, enemies, goal)
+
         if result == "HIT_ENEMY":
             if player.lives <= 0:
                 return "GAME_OVER", player.score
@@ -352,46 +377,58 @@ def run_game():
         if result == "WIN":
             return "WIN", player.score
 
-        # camera follows player & center player a bit right of center to give look-ahead
-        target_cam = -(player.rect.centerx - WIDTH // 2 + 100)
-        # don't show negative far left, assuming level starts at x=0
-        min_cam = -(0)
-        max_cam = -(2200 - WIDTH + 200)  # allow some space to the right
-        camera_x = max(max_cam, min(min_cam, target_cam))
+        # --- CAMERA: compute target and clamp using the actual level_width ---
+        # camera_x is a POSITIVE number: how far the world has been shifted left
+        # center player (with slight look-ahead)
+        target_cam = player.rect.centerx - (WIDTH // 2) + 100
 
-        # draw background
-        screen.fill((120, 180, 255))  # sky color
-        # draw a plain castle silhouette background for theme
-        pygame.draw.rect(screen, (90, 60, 180), (50 + camera_x/5, HEIGHT - 300, 400, 300))
-        pygame.draw.polygon(screen, (70, 40, 140), [(300 + camera_x/5, HEIGHT - 300), (330 + camera_x/5, HEIGHT - 400), (360 + camera_x/5, HEIGHT - 300)])
+        # clamp target between 0 (start) and level_width - screen width (end)
+        max_cam = max(0, level_width - WIDTH)
+        camera_x = int(max(0, min(max_cam, target_cam)))
 
-        # draw platforms
+        # parallax background offset (negative because we blit at (bg_x, 0))
+        bg_x = -int(camera_x * 0.3)
+
+        # --- DRAW: clear frame first ---
+        screen.fill((120, 180, 255))
+
+        # draw background (parallax)
+        screen.blit(IMG_BACKGROUND, (bg_x, 0))
+
+        # optional parallax silhouette (use -camera_x/5 so it moves slowly)
+        pygame.draw.polygon(
+            screen,
+            (70, 40, 140),
+            [
+                (300 - int(camera_x/5), HEIGHT - 300),
+                (330 - int(camera_x/5), HEIGHT - 400),
+                (360 - int(camera_x/5), HEIGHT - 300)
+            ]
+        )
+
+        # draw platforms, coins, enemies, goal with camera offset
+        # screen_x = world_x - camera_x
         for plat in platforms:
-            screen.blit(plat.image, (plat.rect.x + camera_x, plat.rect.y))
+            screen.blit(plat.image, (plat.rect.x - camera_x, plat.rect.y))
 
-        # draw coins
         for c in coins:
-            screen.blit(c.image, (c.rect.x + camera_x, c.rect.y))
+            screen.blit(c.image, (c.rect.x - camera_x, c.rect.y))
 
-        # draw enemies
         for e in enemies:
-            screen.blit(e.image, (e.rect.x + camera_x, e.rect.y))
+            screen.blit(e.image, (e.rect.x - camera_x, e.rect.y))
 
-        # draw goal
-        screen.blit(goal.image, (goal.rect.x + camera_x, goal.rect.y))
+        screen.blit(goal.image, (goal.rect.x - camera_x, goal.rect.y))
 
-        # draw player
+        # draw player (player.draw uses rect.x - offset_x)
         player.draw(screen, camera_x)
 
-        # score and lives
+        # UI (screen-space)
         score_text = get_font(24).render(f"Score: {player.score}", True, (255,255,255))
         lives_text = get_font(24).render(f"Lives: {player.lives}", True, (255,255,255))
         screen.blit(score_text, (16, 8))
         screen.blit(lives_text, (16, 36))
 
         pygame.display.flip()
-
-
 
 # main function
 def main():
