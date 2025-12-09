@@ -4,9 +4,8 @@ import sys
 from pathlib import Path
 
 pygame.init()
-pygame.mixer.init()  # for sounds/music
+pygame.mixer.init()  # for sounds/music (didn't use)
 
-# basic settings
 WIDTH, HEIGHT = 1000, 600
 LEVEL_WIDTH = 2500
 FPS = 60
@@ -23,7 +22,7 @@ def load_image(name, size=None):
         img = pygame.image.load(p).convert_alpha()
         if size: img = pygame.transform.scale(img, size)
         return img
-    # simple colored surface for now as placeholder for assets
+    # simple colored surface as placeholder for assets
     surf = pygame.Surface(size if size else (40, 40), pygame.SRCALPHA)
     surf.fill((200, 100, 255, 255))
     return surf
@@ -68,7 +67,7 @@ class Platform(pygame.sprite.Sprite):
         self.image = pygame.transform.scale(image, (w, h)) if image else pygame.Surface((w, h))
         self.rect = self.image.get_rect(topleft=(x, y))
 
-        # The collision surface for standing on the platform
+        # collision surface for standing on the platform
         self.floor_rect = pygame.Rect(self.rect.x, self.rect.y, self.rect.width, 5)
 
 class Coin(pygame.sprite.Sprite):
@@ -219,23 +218,19 @@ def build_level():
     coins = pygame.sprite.Group()
     enemies = pygame.sprite.Group()
 
-    # Desired final level width (how far player can go)
-    # You can increase this if you plan larger levels.
+    # final level width (how far player can go)
     LEVEL_WIDTH = 2500
 
-    # TILE the ground across the full LEVEL_WIDTH
     ground_tile = IMG_GROUND
     tile_w, tile_h = ground_tile.get_size()
     ground_y = HEIGHT - tile_h
 
     x = 0
     while x < LEVEL_WIDTH:
-        # create a platform-sized sprite out of the ground tile
-        # use Platform class but with tile size to avoid massive stretching
         platforms.add(Platform(x, ground_y, tile_w, tile_h))
         x += tile_w
 
-    # some floating platforms (x, y, w, h)  -- these will be tiled inside Platform
+    # some floating platforms (x, y, w, h)
     platform_data = [
         (300, 460, 120, 20),
         (500, 380, 120, 20),
@@ -263,11 +258,10 @@ def build_level():
     enemies.add(Enemy(1600, 460, 1450, 1750))
     enemies.add(Enemy(1800, 420, 1750, 2000))
 
-    # goal at the end (place near LEVEL_WIDTH)
+    # goal at the end
     goal_x = LEVEL_WIDTH - 300
-    goal = Goal(goal_x, HEIGHT - 120)   # Adjusted for your ground tile height
+    goal = Goal(goal_x, HEIGHT - 120)
 
-    # compute real level_width from content so camera clamps are correct
     max_right = goal.rect.right
     for plat in platforms:
         if plat.rect.right > max_right:
@@ -276,7 +270,7 @@ def build_level():
 
     return platforms, coins, enemies, goal, level_width
 
-# ---------- Load sounds / music ----------
+# load sounds / music (if available)
 jump_snd = load_sound("jump.wav")
 coin_snd = load_sound("coin.wav")
 stomp_snd = load_sound("stomp.wav")
@@ -377,25 +371,17 @@ def run_game():
         if result == "WIN":
             return "WIN", player.score
 
-        # --- CAMERA: compute target and clamp using the actual level_width ---
-        # camera_x is a POSITIVE number: how far the world has been shifted left
-        # center player (with slight look-ahead)
         target_cam = player.rect.centerx - (WIDTH // 2) + 100
 
-        # clamp target between 0 (start) and level_width - screen width (end)
         max_cam = max(0, level_width - WIDTH)
         camera_x = int(max(0, min(max_cam, target_cam)))
 
-        # parallax background offset (negative because we blit at (bg_x, 0))
         bg_x = -int(camera_x * 0.3)
 
-        # --- DRAW: clear frame first ---
         screen.fill((120, 180, 255))
 
-        # draw background (parallax)
         screen.blit(IMG_BACKGROUND, (bg_x, 0))
 
-        # optional parallax silhouette (use -camera_x/5 so it moves slowly)
         pygame.draw.polygon(
             screen,
             (70, 40, 140),
@@ -406,8 +392,6 @@ def run_game():
             ]
         )
 
-        # draw platforms, coins, enemies, goal with camera offset
-        # screen_x = world_x - camera_x
         for plat in platforms:
             screen.blit(plat.image, (plat.rect.x - camera_x, plat.rect.y))
 
@@ -419,10 +403,10 @@ def run_game():
 
         screen.blit(goal.image, (goal.rect.x - camera_x, goal.rect.y))
 
-        # draw player (player.draw uses rect.x - offset_x)
+        # draw player
         player.draw(screen, camera_x)
 
-        # UI (screen-space)
+        # screen-space
         score_text = get_font(24).render(f"Score: {player.score}", True, (255,255,255))
         lives_text = get_font(24).render(f"Lives: {player.lives}", True, (255,255,255))
         screen.blit(score_text, (16, 8))
